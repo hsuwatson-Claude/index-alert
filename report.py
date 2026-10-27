@@ -83,6 +83,32 @@ def fetch_vix(today):
         return None
 
 
+FG = {"key": "FG", "name": "仿 CNN 恐懼貪婪指數", "short": "恐懼貪婪"}
+CNN_FG_URL = "https://edition.cnn.com/markets/fear-and-greed"
+
+
+def fetch_fear_greed(today):
+    """自己算的仿 CNN 指數（SPEC 第 4 節）：4 項指標各取過去 252 天的百分位，平均成 0-100。
+    只有早報用；抓不到時回傳 None。"""
+    try:
+        px = yf.download(["^GSPC", "^VIX", "SPY", "TLT", "HYG", "LQD"], period="3y",
+                         auto_adjust=True, progress=False)["Close"].dropna()
+        raw = pd.DataFrame({
+            "momentum": px["^GSPC"] / px["^GSPC"].rolling(125).mean(),         # 高 = 貪婪
+            "volatility": -px["^VIX"] / px["^VIX"].rolling(50).mean(),         # VIX 高於均線 = 恐慌
+            "safe_haven": px["SPY"].pct_change(20) - px["TLT"].pct_change(20),  # 股票贏債券 = 貪婪
+            "junk_bond": px["HYG"].pct_change(20) - px["LQD"].pct_change(20),   # 垃圾債贏投資級債 = 貪婪
+        }).dropna()
+        pct = raw.rolling(252).apply(lambda s: (s[:-1] < s[-1]).mean() * 100, raw=True).dropna()
+        fg = pct.mean(axis=1).round().astype(int)
+        day = fg.index[-1].date()
+        return {"date": day, "today": fg.iloc[-1], "yesterday": fg.iloc[-2],
+                "stale": day < expected_date("US", "morning", today)}
+    except Exception as e:
+        print(f"恐懼貪婪指數算不出來：{e}", flush=True)
+        return None
+
+
 # ---------- 計算 ----------
 
 def add_indicators(df):
@@ -177,16 +203,47 @@ def vix_status(v):
     return "沒超過 20", f"盤中最高 {v['high']:.2f}，沒超過 20，市場還算平靜。"
 
 
+def fg_level(x):
+    """CNN 分級（SPEC 第 4 節）。"""
+    for top, name in ((24, "極度恐慌"), (44, "恐慌"), (55, "中性"), (75, "貪婪")):
+        if x <= top:
+            return name
+    return "極度貪婪"
+
+
+def fg_alerts(f):
+    """SPEC 第 4 節：昨天 ≥ 25、今天 < 25（從恐慌掉進極度恐慌）。"""
+    if f and f["yesterday"] >= 25 and f["today"] < 25:
+        return [("warn", "⚠ 風險", FG, f"掉進極度恐慌（{f['yesterday']} → {f['today']}）", "市場很害怕，波動可能變大")]
+    return []
+
+
 def vix_html(v):
     if not v:
-        return '<section><h2>風險溫度計</h2><div class="risk"><div><h3>VIX 恐慌指數</h3><p>今天抓不到 VIX 資料。</p></div></div></section>'
+        return '<div><h3>VIX 恐慌指數</h3><p>今天抓不到 VIX 資料。</p></div>'
     src = f"美股 {v['date'].month}/{v['date'].day} 收盤" + ("（還沒更新）" if v["stale"] else "")
-    return f"""<section><h2>風險溫度計</h2><div class="risk"><div>
+    return f"""<div>
     <div class="card-top"><h3>VIX 恐慌指數　<span class="num">{v['close']:.2f}</span></h3><span class="src{" stale" if v["stale"] else ""}">{src}</span></div>
-    <p>{vix_status(v)[1]}</p></div></div></section>"""
+    <p>{vix_status(v)[1]}</p></div>"""
 
 
-def build_alerts(items, vix=None):
+def fg_html(f):
+    link = f'<a href="{CNN_FG_URL}">看 CNN 官方數字</a>'
+    if not f:
+        return f'<div><h3>{FG["name"]}</h3><p>今天算不出來。{link}</p></div>'
+    src = f"美股 {f['date'].month}/{f['date'].day} 收盤" + ("（還沒更新）" if f["stale"] else "")
+    return f"""<div>
+    <div class="card-top"><h3>{FG['name']}　<span class="num">{f['today']}</span>（{fg_level(f['today'])}）</h3><span class="src{" stale" if f["stale"] else ""}">{src}</span></div>
+    <p>前一天 <span class="num">{f['yesterday']}</span>（{fg_level(f['yesterday'])}）。這是我們自己算的，和 CNN 不會完全一樣。{link}</p>
+    <div class="fg"><span></span><span></span><span></span><span></span><span></span><i style="left:{f['today']}%"></i></div>
+    <div class="fg-labels"><span>極度恐慌</span><span>恐慌</span><span>中性</span><span>貪婪</span><span>極度貪婪</span></div></div>"""
+
+
+def risk_html(v, f):
+    return f'<section><h2>風險溫度計</h2><div class="risk">{vix_html(v)}{fg_html(f)}</div></section>'
+
+
+def build_alerts(items, vix=None, fg=None):
     alerts = []
     for ix, r in items:
         if r["ma_cross"] == "up":
@@ -197,7 +254,7 @@ def build_alerts(items, vix=None):
             alerts.append(("up", "▲ 黃金交叉", ix, "KD 黃金交叉", "K 往上穿過 D，可能開始轉強"))
         elif r["kd_cross"] == "down":
             alerts.append(("down", "▼ 死亡交叉", ix, "KD 死亡交叉", "K 往下穿過 D，可能開始轉弱"))
-    return alerts + vix_alerts(vix)
+    return alerts + vix_alerts(vix) + fg_alerts(fg)
 
 
 def headline(alerts):
@@ -227,10 +284,10 @@ def html_block(r):
         <div><div class="meter"><span class="mid"></span><span class="dot {dc}" style="left:{pos:.1f}%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>"""
 
 
-def render_html(items, stale_keys, edition, today, now, vix):
+def render_html(items, stale_keys, edition, today, now, vix, fg):
     tpl = TEMPLATE.read_text(encoding="utf-8")
     head = tpl.split('<div class="wrap">')[0]
-    alerts = build_alerts(items, vix)
+    alerts = build_alerts(items, vix, fg)
 
     alert_html = "\n".join(
         f'<li class="alert"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
@@ -259,10 +316,10 @@ def render_html(items, stale_keys, edition, today, now, vix):
   </header>
   <section><h2>特別提醒</h2><ul class="alerts">{alert_html}</ul></section>
   <section><h2>指數狀態</h2><div class="cards">{''.join(cards)}</div></section>
-  {vix_html(vix) if edition == "morning" else ""}
+  {risk_html(vix, fg) if edition == "morning" else ""}
   {re.search(r'<details>.*?</details>', tpl, re.S).group(0)}
   <footer>
-    資料來源：美股 Yahoo Finance、台股 FinMind<br>
+    資料來源：美股 Yahoo Finance、台股 FinMind；恐懼貪婪指數為自行計算，非 CNN 官方<br>
     KD 參數：日線 KD(9,3,3)<br>
     產生時間：{now:%Y/%m/%d %H:%M}（台灣時間）<br>
     這份是提醒，不是投資建議。
@@ -273,8 +330,8 @@ def render_html(items, stale_keys, edition, today, now, vix):
             f'{head}</head><body>{body}</body></html>')
 
 
-def render_text(items, stale_keys, edition, today, vix):
-    alerts = build_alerts(items, vix)
+def render_text(items, stale_keys, edition, today, vix, fg):
+    alerts = build_alerts(items, vix, fg)
     plain = re.sub(r"</?b>", "", headline(alerts))
     lines = [f"關鍵指數小秘書｜{today.month}/{today.day}（{WEEKDAYS[today.weekday()]}）{'早報' if edition == 'morning' else '午報'}",
              plain, "", "【特別提醒】"]
@@ -295,6 +352,13 @@ def render_text(items, stale_keys, edition, today, vix):
             lines.append(f"VIX {vix['close']:.2f}（盤中最高 {vix['high']:.2f}）{vix_status(vix)[0]}（{vix['date'].month}/{vix['date'].day}）{stale}")
         else:
             lines.append("VIX 今天抓不到資料")
+        if fg:
+            stale = "（還沒更新）" if fg["stale"] else ""
+            lines.append(f"恐懼貪婪（仿 CNN）{fg['today']} {fg_level(fg['today'])}｜前一天 {fg['yesterday']} {fg_level(fg['yesterday'])}"
+                         f"（{fg['date'].month}/{fg['date'].day}）{stale}")
+        else:
+            lines.append("恐懼貪婪（仿 CNN）今天算不出來")
+        lines.append(f"CNN 官方：{CNN_FG_URL}")
     lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險｜提醒不是投資建議"]
     return "\n".join(lines)
 
@@ -352,9 +416,10 @@ def main():
         text = f"關鍵指數小秘書｜{today.month}/{today.day}\n今天沒有新資料（可能休市，或資料延遲）。"
     else:
         vix = fetch_vix(today) if args.edition == "morning" else None
+        fg = fetch_fear_greed(today) if args.edition == "morning" else None
         html_path = OUT / f"report_{today:%Y%m%d}_{args.edition}.html"
-        html_path.write_text(render_html(items, stale, args.edition, today, now, vix), encoding="utf-8")
-        text = render_text(items, stale, args.edition, today, vix)
+        html_path.write_text(render_html(items, stale, args.edition, today, now, vix, fg), encoding="utf-8")
+        text = render_text(items, stale, args.edition, today, vix, fg)
         if args.link_base:
             # 雲端排程用：放進 site/ 由 GitHub Pages 發布，訊息附連結
             SITE.mkdir(exist_ok=True)
