@@ -181,7 +181,7 @@ def html_block(r):
     return f"""<div class="price"><span class="close num">{f2(r['close'])}</span><span class="chg num {cc}">{ct}</span></div>
         <dl class="rows">
           <div class="row"><dt>5日線</dt><dd><span class="num">{f2(r['ma5'])}</span>　{side} <span class="num {dc}">{r['dist_pct']:+.1f}%</span><span class="pill {mc}">{mp}</span></dd></div>
-          <div class="row"><dt>KD</dt><dd>K <span class="num">{r['k']:.0f}</span> ／ D <span class="num">{r['d']:.0f}</span><span class="pill {kc}">{kp}</span></dd></div>
+          <div class="row"><dt>KD</dt><dd>K <span class="num">{r['k']:.1f}</span> ／ D <span class="num">{r['d']:.1f}</span><span class="pill {kc}">{kp}</span></dd></div>
         </dl>
         <div><div class="meter"><span class="mid"></span><span class="dot {dc}" style="left:{pos:.1f}%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>"""
 
@@ -245,7 +245,7 @@ def render_text(items, stale_keys, edition, today):
         side = "線上" if r["dist_pct"] >= 0 else "線下"
         stale = "（還沒更新）" if ix["key"] in stale_keys else ""
         lines.append(f"{ix['short']} {r['close']:,.2f} {ct.split('（')[0][0]}{abs(r['chg_pct']):.2f}%（{r['date'].month}/{r['date'].day}）{stale}")
-        lines.append(f"　5日線 {side} {r['dist_pct']:+.1f}% {mp}｜KD {r['k']:.0f}/{r['d']:.0f} {kp}")
+        lines.append(f"　5日線 {side} {r['dist_pct']:+.1f}% {mp}｜KD {r['k']:.1f}/{r['d']:.1f} {kp}")
     lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱｜提醒不是投資建議"]
     return "\n".join(lines)
 
