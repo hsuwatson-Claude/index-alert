@@ -1,0 +1,66 @@
+# 每日指數提醒：產生報告 → 發布到 GitHub Pages → 把文字版和連結送到 Telegram
+# 時間規則見 docs/SPEC.md。cron 用 UTC（台灣 = UTC+8）。
+name: 每日指數提醒
+
+on:
+  schedule:
+    - cron: "30 21 * * 1-5"   # 台灣週二～週六 05:30 早報（美股週一～週五收盤）
+    - cron: "35 5 * * 1-5"    # 台灣週一～週五 13:35 午報（只有台股）
+  workflow_dispatch:          # 可在 Actions 頁面手動按一次測試
+    inputs:
+      edition:
+        description: 早報 morning / 午報 afternoon
+        type: choice
+        options: [morning, afternoon]
+        default: morning
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: daily-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 產生報告
+        env:
+          EDITION: ${{ github.event.schedule == '30 21 * * 1-5' && 'morning' || github.event.schedule == '35 5 * * 1-5' && 'afternoon' || inputs.edition }}
+        run: python -W ignore report.py --edition "$EDITION" --wait-minutes 60 --link-base "https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+
+      - name: 把報告存回 repo（保留歷史）
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site
+          git commit -m "報告 $(TZ=Asia/Taipei date +%F_%H%M)" || echo "沒有新報告"
+          git push
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4
+
+      - name: 送 Telegram
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: curl -sSf --data-urlencode "text@out/message.txt" -d "chat_id=$CHAT_ID" "https://api.telegram.org/bot$TOKEN/sendMessage" > /dev/null

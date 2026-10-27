@@ -1,0 +1,258 @@
+<title>關鍵指數小秘書</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* 版面：手機單欄，由上而下 = 結論 → 特別提醒 → 指數卡 → 風險溫度計 → 小辭典
+   指數排序固定：費半 → 那斯達克（綜合、100）→ 加權 → 櫃買 */
+:root {
+  --bg: #eef1f5;
+  --surface: #ffffff;
+  --ink: #17212d;
+  --muted: #5d6b7c;
+  --line: #d9dfe7;
+  --accent: #2c4a78;
+  --up: #c62f2b;        /* 台股慣例：紅 = 漲 / 轉強 */
+  --up-soft: #fbe9e8;
+  --down: #10805a;      /* 綠 = 跌 / 轉弱 */
+  --down-soft: #e3f4ed;
+  --warn: #b26a00;
+  --warn-soft: #fdf1dc;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-num: "JetBrains Mono", ui-monospace, "Consolas", monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131a; --surface: #18202b; --ink: #e5eaf1; --muted: #93a1b3; --line: #2a3443;
+    --accent: #8fb0e3; --up: #ff6e66; --up-soft: #3a1d1d; --down: #3cc58e; --down-soft: #13302a;
+    --warn: #f2b14c; --warn-soft: #3a2c14; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131a; --surface: #18202b; --ink: #e5eaf1; --muted: #93a1b3; --line: #2a3443;
+  --accent: #8fb0e3; --up: #ff6e66; --up-soft: #3a1d1d; --down: #3cc58e; --down-soft: #13302a;
+  --warn: #f2b14c; --warn-soft: #3a2c14; color-scheme: dark;
+}
+
+body { background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 15px; line-height: 1.55; }
+.wrap {
+  max-width: 560px; margin: 0 auto;
+  padding-block: 16px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 20px;
+}
+.num { font-family: var(--font-num); font-variant-numeric: tabular-nums; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+.sample { font-size: 12px; color: var(--warn); background: var(--warn-soft); border-radius: 6px; padding: 6px 10px; }
+
+header h1 { margin: 0; font-size: 22px; font-weight: 700; color: var(--accent); letter-spacing: .02em; }
+header .date { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+.edition { display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-left: 6px; }
+.headline { margin: 10px 0 0; font-size: 17px; font-weight: 500; text-wrap: balance; }
+
+h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); letter-spacing: .12em; }
+
+/* 特別提醒 */
+.alerts { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.alert { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; margin-top: 2px; }
+.tag.up { background: var(--up-soft); }
+.tag.down { background: var(--down-soft); }
+.alert b { font-weight: 700; }
+.alert p { margin: 0; min-width: 0; }
+.alert small { display: block; color: var(--muted); font-size: 13px; }
+
+/* 指數卡 */
+.cards { display: grid; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
+.card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.card-top h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.card-top .src { color: var(--muted); font-size: 12px; }
+.card-top .src.stale { color: var(--warn); font-weight: 700; }
+.sub { display: grid; gap: 10px; }
+.sub + .sub { border-top: 1px solid var(--line); padding-top: 12px; }
+.sub h4 { margin: 0; font-size: 14px; font-weight: 700; color: var(--muted); }
+.sub h4 .code { font-family: var(--font-num); font-weight: 500; font-size: 12px; margin-left: 4px; }
+.price { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.price .close { font-size: 24px; font-weight: 700; }
+.price .chg { font-size: 14px; font-weight: 500; }
+.rows { display: grid; gap: 6px; margin: 0; }
+.row { display: grid; grid-template-columns: 4.2em 1fr; gap: 8px; align-items: center; }
+.row dt { color: var(--muted); font-size: 13px; }
+.row dd { margin: 0; min-width: 0; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 8px; margin-left: 4px; }
+.pill.up { background: var(--up-soft); }
+.pill.down { background: var(--down-soft); }
+.pill.flat { background: var(--bg); color: var(--muted); font-weight: 500; }
+
+/* 位置條：中線 = 5日線，點在右 = 在線上 */
+.meter { position: relative; height: 22px; }
+.meter::before { content: ""; position: absolute; left: 0; right: 0; top: 10px; height: 2px; background: linear-gradient(to right, var(--down-soft), var(--line) 50%, var(--up-soft)); border-radius: 2px; }
+.meter .mid { position: absolute; left: 50%; top: 3px; width: 2px; height: 16px; background: var(--muted); transform: translateX(-1px); }
+.meter .dot { position: absolute; top: 5px; width: 12px; height: 12px; border-radius: 50%; transform: translateX(-6px); border: 2px solid var(--surface); }
+.meter .dot.up { background: var(--up); }
+.meter .dot.down { background: var(--down); }
+.meter-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -2px; }
+
+/* 風險溫度計（預留） */
+.risk { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 14px; }
+.risk .soon { font-size: 12px; color: var(--muted); }
+.risk h3 { margin: 0 0 4px; font-size: 15px; }
+.risk p { margin: 0; font-size: 14px; }
+.fg { display: grid; grid-template-columns: 25fr 20fr 11fr 20fr 24fr; gap: 2px; margin-top: 8px; position: relative; }
+.fg span { height: 8px; }
+.fg span:nth-child(1) { background: var(--down); border-radius: 4px 0 0 4px; }
+.fg span:nth-child(2) { background: var(--down-soft); }
+.fg span:nth-child(3) { background: var(--line); }
+.fg span:nth-child(4) { background: var(--up-soft); }
+.fg span:nth-child(5) { background: var(--up); border-radius: 0 4px 4px 0; }
+.fg i { position: absolute; top: -4px; width: 3px; height: 16px; background: var(--ink); border-radius: 2px; transform: translateX(-1px); }
+.fg-labels { display: grid; grid-template-columns: 25fr 20fr 11fr 20fr 24fr; font-size: 11px; color: var(--muted); margin-top: 4px; text-align: center; }
+
+/* 小辭典 */
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 700; color: var(--accent); }
+summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+details dl { margin: 10px 0 0; display: grid; gap: 10px; }
+details dt { font-weight: 700; }
+details dd { margin: 0; color: var(--muted); font-size: 14px; }
+
+footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
+</style>
+
+<div class="wrap">
+
+  <div class="sample">這是公版示意：下面數字都是範例，不是真實行情。下午版只有加權、櫃買兩張卡，其餘相同。</div>
+
+  <header>
+    <h1>關鍵指數小秘書</h1>
+    <p class="date">2026/10/28（三）<span class="edition">早報 05:30</span></p>
+    <p class="headline">今天有 <b>4 個提醒</b>：費半 KD 轉弱要小心，那斯達克轉強、櫃買轉弱。</p>
+  </header>
+
+  <section>
+    <h2>特別提醒</h2>
+    <ul class="alerts">
+      <li class="alert">
+        <span class="tag down">▼ 死亡交叉</span>
+        <p><b>費城半導體</b> KD 死亡交叉<small>K 往下穿過 D，可能開始轉弱</small></p>
+      </li>
+      <li class="alert">
+        <span class="tag up">▲ 突破</span>
+        <p><b>那斯達克綜合</b> 漲回 5日線上面<small>短線轉強</small></p>
+      </li>
+      <li class="alert">
+        <span class="tag up">▲ 黃金交叉</span>
+        <p><b>加權指數</b> KD 黃金交叉<small>K 往上穿過 D，可能開始轉強</small></p>
+      </li>
+      <li class="alert">
+        <span class="tag down">▼ 跌破</span>
+        <p><b>櫃買指數</b> 跌到 5日線下面<small>短線轉弱</small></p>
+      </li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>指數狀態</h2>
+    <div class="cards">
+
+      <article class="card">
+        <div class="card-top"><h3>費城半導體指數</h3><span class="src">美股 10/27 收盤</span></div>
+        <div class="price"><span class="close num">5,120.50</span><span class="chg num down">▼ 86.30（-1.66%）</span></div>
+        <dl class="rows">
+          <div class="row"><dt>5日線</dt><dd><span class="num">5,210.80</span>　在線下 <span class="num down">-1.7%</span><span class="pill flat">持續</span></dd></div>
+          <div class="row"><dt>KD</dt><dd>K <span class="num">70</span> ／ D <span class="num">75</span><span class="pill down">死亡交叉</span></dd></div>
+        </dl>
+        <div><div class="meter"><span class="mid"></span><span class="dot down" style="left:21.2%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><h3>那斯達克</h3><span class="src">美股 10/27 收盤</span></div>
+        <div class="sub">
+          <h4>綜合指數<span class="code">IXIC</span></h4>
+          <div class="price"><span class="close num">18,945.20</span><span class="chg num up">▲ 312.40（+1.68%）</span></div>
+          <dl class="rows">
+            <div class="row"><dt>5日線</dt><dd><span class="num">18,820.00</span>　在線上 <span class="num up">+0.7%</span><span class="pill up">今天突破</span></dd></div>
+            <div class="row"><dt>KD</dt><dd>K <span class="num">38</span> ／ D <span class="num">31</span><span class="pill flat">K 在 D 上面</span></dd></div>
+          </dl>
+          <div><div class="meter"><span class="mid"></span><span class="dot up" style="left:61.1%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
+        </div>
+        <div class="sub">
+          <h4>100 指數<span class="code">NDX</span></h4>
+          <div class="price"><span class="close num">20,512.30</span><span class="chg num up">▲ 298.10（+1.47%）</span></div>
+          <dl class="rows">
+            <div class="row"><dt>5日線</dt><dd><span class="num">20,380.50</span>　在線上 <span class="num up">+0.6%</span><span class="pill flat">持續</span></dd></div>
+            <div class="row"><dt>KD</dt><dd>K <span class="num">44</span> ／ D <span class="num">39</span><span class="pill flat">K 在 D 上面</span></dd></div>
+          </dl>
+          <div><div class="meter"><span class="mid"></span><span class="dot up" style="left:60.8%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
+        </div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><h3>台灣加權指數</h3><span class="src">台股 10/27 收盤</span></div>
+        <div class="price"><span class="close num">23,456.78</span><span class="chg num up">▲ 234.56（+1.01%）</span></div>
+        <dl class="rows">
+          <div class="row"><dt>5日線</dt><dd><span class="num">23,290.40</span>　在線上 <span class="num up">+0.7%</span><span class="pill flat">持續</span></dd></div>
+          <div class="row"><dt>KD</dt><dd>K <span class="num">48</span> ／ D <span class="num">45</span><span class="pill up">黃金交叉</span></dd></div>
+        </dl>
+        <div><div class="meter"><span class="mid"></span><span class="dot up" style="left:61.9%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
+      </article>
+
+      <article class="card">
+        <div class="card-top"><h3>櫃買指數</h3><span class="src">台股 10/27 收盤</span></div>
+        <div class="price"><span class="close num">256.34</span><span class="chg num down">▼ 3.12（-1.20%）</span></div>
+        <dl class="rows">
+          <div class="row"><dt>5日線</dt><dd><span class="num">258.10</span>　在線下 <span class="num down">-0.7%</span><span class="pill down">今天跌破</span></dd></div>
+          <div class="row"><dt>KD</dt><dd>K <span class="num">62</span> ／ D <span class="num">66</span><span class="pill flat">K 在 D 下面</span></dd></div>
+        </dl>
+        <div><div class="meter"><span class="mid"></span><span class="dot down" style="left:38.7%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>風險溫度計</h2>
+    <div class="risk">
+      <span class="soon">預留版位，之後新增。數字為範例。</span>
+      <div>
+        <h3>VIX 恐慌指數　<span class="num">18.4</span></h3>
+        <p>盤中最高 <span class="num">19.6</span>，沒碰到 20，市場還算平靜。盤中超過 20、或收盤在 20 以上，都會在「特別提醒」通知你。</p>
+      </div>
+      <div>
+        <h3>CNN 恐懼貪婪指數　<span class="num">38</span>（恐慌）</h3>
+        <p>還沒掉進極度恐慌（24 以下）。從恐慌掉進極度恐慌那天，會在「特別提醒」通知你。</p>
+        <div class="fg"><span></span><span></span><span></span><span></span><span></span><i style="left:38%"></i></div>
+        <div class="fg-labels"><span>極度恐慌</span><span>恐慌</span><span>中性</span><span>貪婪</span><span>極度貪婪</span></div>
+      </div>
+    </div>
+  </section>
+
+  <details>
+    <summary>看不懂？點這裡</summary>
+    <dl>
+      <dt>5日線是什麼？</dt>
+      <dd>最近 5 天收盤價的平均。指數在線上面，代表最近買的人大多在賺；在線下面，代表大多在賠。</dd>
+      <dt>突破／跌破</dt>
+      <dd>昨天在線下、今天跑到線上 = 突破（轉強）。昨天在線上、今天掉到線下 = 跌破（轉弱）。</dd>
+      <dt>KD 是什麼？</dt>
+      <dd>看最近 9 天漲跌力道的指標，數字 0～100。K 跑得快，D 跑得慢。</dd>
+      <dt>黃金交叉／死亡交叉</dt>
+      <dd>K 由下往上穿過 D = 黃金交叉（可能轉強）。K 由上往下穿過 D = 死亡交叉（可能轉弱）。</dd>
+      <dt>那斯達克為什麼有兩個？</dt>
+      <dd>綜合指數（IXIC）包含所有在那斯達克上市的公司；100 指數（NDX）只看最大的 100 家非金融公司。</dd>
+      <dt>紅色、綠色</dt>
+      <dd>照台股習慣：紅色 = 漲或轉強，綠色 = 跌或轉弱。</dd>
+    </dl>
+  </details>
+
+  <footer>
+    資料來源：（待定）<br>
+    KD 參數：日線 KD(9,3,3)<br>
+    這份是提醒，不是投資建議。
+  </footer>
+
+</div>
