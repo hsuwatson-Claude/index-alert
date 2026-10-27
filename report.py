@@ -69,6 +69,20 @@ def add_twse_today(df, mis_ch):
     return df
 
 
+VIX = {"key": "VIX", "name": "VIX 恐慌指數", "short": "VIX"}
+
+
+def fetch_vix(today):
+    """只有早報用。抓不到時回傳 None，報告照常送，這格顯示「抓不到」。"""
+    try:
+        df = fetch_yahoo("^VIX")
+        return {"date": df.index[-1], "close": df["Close"].iloc[-1], "high": df["High"].iloc[-1],
+                "stale": df.index[-1] < expected_date("US", "morning", today)}
+    except Exception as e:
+        print(f"VIX 抓不到：{e}", flush=True)
+        return None
+
+
 # ---------- 計算 ----------
 
 def add_indicators(df):
@@ -144,7 +158,35 @@ def kd_pill(r):
     return ("K 在 D 上面" if r["k"] > r["d"] else "K 在 D 下面"), "flat"
 
 
-def build_alerts(items):
+def vix_alerts(v):
+    """SPEC 第 4 節：盤中最高 > 20 就提醒；收盤在 20 以上每天提醒。"""
+    if not v:
+        return []
+    if v["close"] >= 20:
+        return [("warn", "⚠ 風險", VIX, f"收盤 {v['close']:.2f}，在 20 以上", "市場緊張，波動可能變大")]
+    if v["high"] > 20:
+        return [("warn", "⚠ 風險", VIX, f"盤中最高 {v['high']:.2f}，超過 20", f"收盤 {v['close']:.2f} 回到 20 以下")]
+    return []
+
+
+def vix_status(v):
+    if v["close"] >= 20:
+        return "在 20 以上", "收盤在 20 以上，市場緊張，波動可能變大。"
+    if v["high"] > 20:
+        return "盤中超過 20", f"盤中最高 {v['high']:.2f} 超過 20，收盤回到 20 以下。"
+    return "沒超過 20", f"盤中最高 {v['high']:.2f}，沒超過 20，市場還算平靜。"
+
+
+def vix_html(v):
+    if not v:
+        return '<section><h2>風險溫度計</h2><div class="risk"><div><h3>VIX 恐慌指數</h3><p>今天抓不到 VIX 資料。</p></div></div></section>'
+    src = f"美股 {v['date'].month}/{v['date'].day} 收盤" + ("（還沒更新）" if v["stale"] else "")
+    return f"""<section><h2>風險溫度計</h2><div class="risk"><div>
+    <div class="card-top"><h3>VIX 恐慌指數　<span class="num">{v['close']:.2f}</span></h3><span class="src{" stale" if v["stale"] else ""}">{src}</span></div>
+    <p>{vix_status(v)[1]}</p></div></div></section>"""
+
+
+def build_alerts(items, vix=None):
     alerts = []
     for ix, r in items:
         if r["ma_cross"] == "up":
@@ -155,15 +197,14 @@ def build_alerts(items):
             alerts.append(("up", "▲ 黃金交叉", ix, "KD 黃金交叉", "K 往上穿過 D，可能開始轉強"))
         elif r["kd_cross"] == "down":
             alerts.append(("down", "▼ 死亡交叉", ix, "KD 死亡交叉", "K 往下穿過 D，可能開始轉弱"))
-    return alerts
+    return alerts + vix_alerts(vix)
 
 
 def headline(alerts):
     if not alerts:
         return "今天<b>沒有特別提醒</b>：沒有指數穿過 5日線，也沒有 KD 交叉。"
-    n_up = sum(a[0] == "up" for a in alerts)
-    n_down = len(alerts) - n_up
-    parts = [p for p in (f"{n_up} 個轉強" if n_up else "", f"{n_down} 個轉弱" if n_down else "") if p]
+    counts = [(sum(a[0] == c for a in alerts), label) for c, label in (("up", "轉強"), ("down", "轉弱"), ("warn", "風險"))]
+    parts = [f"{n} 個{label}" for n, label in counts if n]
     return f"今天有 <b>{len(alerts)} 個提醒</b>：{'、'.join(parts)}。"
 
 
@@ -186,10 +227,10 @@ def html_block(r):
         <div><div class="meter"><span class="mid"></span><span class="dot {dc}" style="left:{pos:.1f}%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>"""
 
 
-def render_html(items, stale_keys, edition, today, now):
+def render_html(items, stale_keys, edition, today, now, vix):
     tpl = TEMPLATE.read_text(encoding="utf-8")
     head = tpl.split('<div class="wrap">')[0]
-    alerts = build_alerts(items)
+    alerts = build_alerts(items, vix)
 
     alert_html = "\n".join(
         f'<li class="alert"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
@@ -218,6 +259,7 @@ def render_html(items, stale_keys, edition, today, now):
   </header>
   <section><h2>特別提醒</h2><ul class="alerts">{alert_html}</ul></section>
   <section><h2>指數狀態</h2><div class="cards">{''.join(cards)}</div></section>
+  {vix_html(vix) if edition == "morning" else ""}
   {re.search(r'<details>.*?</details>', tpl, re.S).group(0)}
   <footer>
     資料來源：美股 Yahoo Finance、台股 FinMind<br>
@@ -231,8 +273,8 @@ def render_html(items, stale_keys, edition, today, now):
             f'{head}</head><body>{body}</body></html>')
 
 
-def render_text(items, stale_keys, edition, today):
-    alerts = build_alerts(items)
+def render_text(items, stale_keys, edition, today, vix):
+    alerts = build_alerts(items, vix)
     plain = re.sub(r"</?b>", "", headline(alerts))
     lines = [f"關鍵指數小秘書｜{today.month}/{today.day}（{WEEKDAYS[today.weekday()]}）{'早報' if edition == 'morning' else '午報'}",
              plain, "", "【特別提醒】"]
@@ -246,7 +288,14 @@ def render_text(items, stale_keys, edition, today):
         stale = "（還沒更新）" if ix["key"] in stale_keys else ""
         lines.append(f"{ix['short']} {r['close']:,.2f} {ct.split('（')[0][0]}{abs(r['chg_pct']):.2f}%（{r['date'].month}/{r['date'].day}）{stale}")
         lines.append(f"　5日線 {side} {r['dist_pct']:+.1f}% {mp}｜KD {r['k']:.1f}/{r['d']:.1f} {kp}")
-    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱｜提醒不是投資建議"]
+    if edition == "morning":
+        lines += ["", "【風險溫度計】"]
+        if vix:
+            stale = "（還沒更新）" if vix["stale"] else ""
+            lines.append(f"VIX {vix['close']:.2f}（盤中最高 {vix['high']:.2f}）{vix_status(vix)[0]}（{vix['date'].month}/{vix['date'].day}）{stale}")
+        else:
+            lines.append("VIX 今天抓不到資料")
+    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險｜提醒不是投資建議"]
     return "\n".join(lines)
 
 
@@ -302,9 +351,10 @@ def main():
         # 要看的市場全部沒新資料 → 多半是休市，只送一句話
         text = f"關鍵指數小秘書｜{today.month}/{today.day}\n今天沒有新資料（可能休市，或資料延遲）。"
     else:
+        vix = fetch_vix(today) if args.edition == "morning" else None
         html_path = OUT / f"report_{today:%Y%m%d}_{args.edition}.html"
-        html_path.write_text(render_html(items, stale, args.edition, today, now), encoding="utf-8")
-        text = render_text(items, stale, args.edition, today)
+        html_path.write_text(render_html(items, stale, args.edition, today, now, vix), encoding="utf-8")
+        text = render_text(items, stale, args.edition, today, vix)
         if args.link_base:
             # 雲端排程用：放進 site/ 由 GitHub Pages 發布，訊息附連結
             SITE.mkdir(exist_ok=True)

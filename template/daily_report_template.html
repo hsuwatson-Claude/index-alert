@@ -61,6 +61,7 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); le
 .tag { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 2px 9px; white-space: nowrap; margin-top: 2px; }
 .tag.up { background: var(--up-soft); }
 .tag.down { background: var(--down-soft); }
+.tag.warn { background: var(--warn-soft); color: var(--warn); }
 .alert b { font-weight: 700; }
 .alert p { margin: 0; min-width: 0; }
 .alert small { display: block; color: var(--muted); font-size: 13px; }
@@ -98,7 +99,7 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); le
 .meter-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: -2px; }
 
 /* 風險溫度計（預留） */
-.risk { background: var(--surface); border: 1px dashed var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 14px; }
+.risk { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 14px; }
 .risk .soon { font-size: 12px; color: var(--muted); }
 .risk h3 { margin: 0 0 4px; font-size: 15px; }
 .risk p { margin: 0; font-size: 14px; }
@@ -217,7 +218,7 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
   <section>
     <h2>風險溫度計</h2>
     <div class="risk">
-      <span class="soon">預留版位，之後新增。數字為範例。</span>
+      <span class="soon">VIX 只在早報出現；CNN 是預留版位。數字為範例。</span>
       <div>
         <h3>VIX 恐慌指數　<span class="num">18.4</span></h3>
         <p>盤中最高 <span class="num">19.6</span>，沒碰到 20，市場還算平靜。盤中超過 20、或收盤在 20 以上，都會在「特別提醒」通知你。</p>
@@ -244,6 +245,8 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
       <dd>K 由下往上穿過 D = 黃金交叉（可能轉強）。K 由上往下穿過 D = 死亡交叉（可能轉弱）。</dd>
       <dt>那斯達克為什麼有兩個？</dt>
       <dd>綜合指數（IXIC）包含所有在那斯達克上市的公司；100 指數（NDX）只看最大的 100 家非金融公司。</dd>
+      <dt>VIX 是什麼？</dt>
+      <dd>美股的「恐慌指數」，數字越高代表大家越緊張。超過 20 通常代表市場開始不安，波動會變大。</dd>
       <dt>紅色、綠色</dt>
       <dd>照台股習慣：紅色 = 漲或轉強，綠色 = 跌或轉弱。</dd>
     </dl>
