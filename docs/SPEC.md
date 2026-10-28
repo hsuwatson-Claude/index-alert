@@ -25,7 +25,10 @@
 | 週二～週六 05:30 | 美股 + 台股（早報） |
 | 週一～週五 13:35 | 只有台股（午報） |
 
-- 排程用 GitHub Actions，設定在 [.github/workflows/daily-report.yml](../.github/workflows/daily-report.yml)。
+- 報告在 GitHub Actions 上產生，設定在 [.github/workflows/daily-report.yml](../.github/workflows/daily-report.yml)。
+- **準時觸發靠 [cron-job.org](https://cron-job.org)**：時間到就呼叫 GitHub 的 `workflow_dispatch`（手動執行）。原因：GitHub 自己的排程不保證準時，2026/10/28 早報晚了 3 小時。
+- GitHub 自己的排程留著當備援。備援跑的時候，如果 `site/` 裡已經有今天那一份報告，就跳過不送。
+- 已知小缺點：休市日沒有報告檔，備援排程會再送一次「今天沒有新資料」。
 - 資料還沒更新時，每 5 分鐘重試，最多等 60 分鐘；還是沒有就只送「今天沒有新資料」。
 
 ## 3. 判斷規則

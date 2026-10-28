@@ -1,12 +1,13 @@
 # 每日指數提醒：產生報告 → 發布到 GitHub Pages → 把文字版和連結送到 Telegram
 # 時間規則見 docs/SPEC.md。cron 用 UTC（台灣 = UTC+8）。
+# 準時觸發靠 cron-job.org 呼叫 workflow_dispatch；下面的 schedule 是備援，常晚好幾小時。
 name: 每日指數提醒
 
 on:
   schedule:
     - cron: "30 21 * * 1-5"   # 台灣週二～週六 05:30 早報（美股週一～週五收盤）
     - cron: "35 5 * * 1-5"    # 台灣週一～週五 13:35 午報（只有台股）
-  workflow_dispatch:          # 可在 Actions 頁面手動按一次測試
+  workflow_dispatch:          # cron-job.org 準時呼叫；也可在 Actions 頁面手動按一次測試
     inputs:
       edition:
         description: 早報 morning / 午報 afternoon
@@ -24,7 +25,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # 備援排程才檢查：今天這一份已經由 cron-job.org 送過（site/ 裡有今天的報告）就跳過，避免送兩次
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: check
+        env:
+          EDITION: ${{ github.event.schedule == '30 21 * * 1-5' && 'morning' || 'afternoon' }}
+        run: |
+          f="site/report_$(TZ=Asia/Taipei date +%Y%m%d)_${EDITION}.html"
+          if [ "${{ github.event_name }}" = "schedule" ] && [ -f "$f" ]; then
+            echo "今天已經送過（$f），跳過"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
   report:
+    needs: check
+    if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
