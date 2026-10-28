@@ -27,6 +27,9 @@
 
 - 報告在 GitHub Actions 上產生，設定在 [.github/workflows/daily-report.yml](../.github/workflows/daily-report.yml)。
 - **準時觸發靠 [cron-job.org](https://cron-job.org)**：時間到就呼叫 GitHub 的 `workflow_dispatch`（手動執行）。原因：GitHub 自己的排程不保證準時，2026/10/28 早報晚了 3 小時。
+  - cron-job.org 有兩個排程：早報 `30 5 * * 2-6`、午報 `35 13 * * 1-5`（時區 Asia/Taipei）。
+  - 用的 GitHub 權杖（token）只有這個 repo 的 Actions 讀寫權限，設定成永不到期。
+  - Header `X-GitHub-Api-Version: 2022-11-28` 在 **2028/3/10 停用**，到時候 cron-job.org 會收到 410。要在那之前改成新版本，改完按 Test run，回 204 才算好。
 - GitHub 自己的排程留著當備援。備援跑的時候，如果 `site/` 裡已經有今天那一份報告，就跳過不送。
 - 已知小缺點：休市日沒有報告檔，備援排程會再送一次「今天沒有新資料」。
 - 資料還沒更新時，每 5 分鐘重試，最多等 60 分鐘；還是沒有就只送「今天沒有新資料」。
