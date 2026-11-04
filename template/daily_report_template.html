@@ -66,6 +66,16 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); le
 .alert p { margin: 0; min-width: 0; }
 .alert small { display: block; color: var(--muted); font-size: 13px; }
 
+/* 加權跌破 20週線：放在標題下方的大警報，比其他提醒誇張 */
+.crash-banner { background: var(--down); color: var(--surface); border-radius: 12px; padding: 14px 16px; text-align: center; font-size: 14px;
+  outline: 3px dashed var(--down); outline-offset: 4px; animation: crash-pulse .8s ease-in-out infinite alternate; }
+.crash-banner .sirens { display: block; font-size: 26px; letter-spacing: .2em; }
+.crash-banner b { display: block; font-size: 24px; font-weight: 700; margin: 2px 0 6px; }
+@keyframes crash-pulse { to { transform: scale(1.02); box-shadow: 0 0 22px var(--down); } }
+@media (prefers-reduced-motion: reduce) { .crash-banner { animation: none; } }
+.alert.crash { border: 2px solid var(--down); background: var(--down-soft); }
+.tag.crash, .pill.crash { background: var(--down); color: var(--surface); }
+
 /* 指數卡 */
 .cards { display: grid; gap: 10px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
@@ -197,6 +207,7 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
         <div class="price"><span class="close num">23,456.78</span><span class="chg num up">▲ 234.56（+1.01%）</span></div>
         <dl class="rows">
           <div class="row"><dt>5日線</dt><dd><span class="num">23,290.40</span>　在線上 <span class="num up">+0.7%</span><span class="pill flat">持續</span></dd></div>
+          <div class="row"><dt>20週線</dt><dd><span class="num">22,880.10</span>　在線上 <span class="num up">+2.5%</span><span class="pill flat">持續</span></dd></div>
           <div class="row"><dt>KD</dt><dd>K <span class="num">48.2</span> ／ D <span class="num">44.6</span><span class="pill up">黃金交叉</span></dd></div>
         </dl>
         <div><div class="meter"><span class="mid"></span><span class="dot up" style="left:61.9%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>
@@ -239,6 +250,8 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
       <dd>最近 5 天收盤價的平均。指數在線上面，代表最近買的人大多在賺；在線下面，代表大多在賠。</dd>
       <dt>突破／跌破</dt>
       <dd>昨天在線下、今天跑到線上 = 突破（轉強）。昨天在線上、今天掉到線下 = 跌破（轉弱）。</dd>
+      <dt>20週線是什麼？（只看加權指數）</dt>
+      <dd>最近 20 週、每週最後一天收盤價的平均，大約是 5 個月的成本，看的是中期趨勢。這週還沒結束時，先用今天收盤當這週的收盤。跌破那天會在最上面跳出大警報；之後只要還在線下，每天都會提醒，站回線上才停。</dd>
       <dt>KD 是什麼？</dt>
       <dd>看最近 9 天漲跌力道的指標，數字 0～100。K 跑得快，D 跑得慢。</dd>
       <dt>黃金交叉／死亡交叉</dt>

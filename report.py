@@ -32,7 +32,7 @@ INDICES = [
     {"key": "SOX", "name": "費城半導體指數", "short": "費半", "src": "yahoo", "symbol": "^SOX", "market": "US", "group": "費城半導體指數"},
     {"key": "IXIC", "name": "那斯達克綜合", "short": "那指綜合", "src": "yahoo", "symbol": "^IXIC", "market": "US", "group": "那斯達克", "sub": "綜合指數", "code": "IXIC"},
     {"key": "NDX", "name": "那斯達克 100", "short": "那指100", "src": "yahoo", "symbol": "^NDX", "market": "US", "group": "那斯達克", "sub": "100 指數", "code": "NDX"},
-    {"key": "TWII", "name": "加權指數", "short": "加權", "src": "finmind", "symbol": "TAIEX", "mis": "tse_t00.tw", "market": "TW", "group": "台灣加權指數"},
+    {"key": "TWII", "name": "加權指數", "short": "加權", "src": "finmind", "symbol": "TAIEX", "mis": "tse_t00.tw", "market": "TW", "group": "台灣加權指數", "w20": True},
     {"key": "TPEX", "name": "櫃買指數", "short": "櫃買", "src": "finmind", "symbol": "TPEx", "mis": "otc_o00.tw", "market": "TW", "group": "櫃買指數"},
 ]
 
@@ -112,9 +112,13 @@ def fetch_fear_greed(today):
 # ---------- 計算 ----------
 
 def add_indicators(df):
-    """MA5 = 最近 5 天收盤平均；KD(9,3,3)：RSV 取 9 天，K、D 各以 1/3 權重平滑，起始值 50。"""
+    """MA5 = 最近 5 天收盤平均；KD(9,3,3)：RSV 取 9 天，K、D 各以 1/3 權重平滑，起始值 50。
+    MA20W = 最近 20 週的週收盤平均；這週還沒結束時，用當天收盤當本週收盤。"""
     df = df.copy()
     df["MA5"] = df["Close"].rolling(5).mean()
+    week = pd.Series([pd.Period(d, "W") for d in df.index], index=df.index)
+    prev19 = df["Close"].groupby(week).last().rolling(19).sum().shift(1)  # 前 19 個完整週的週收盤合計
+    df["MA20W"] = (week.map(prev19) + df["Close"]) / 20
     low9 = df["Low"].rolling(9).min()
     high9 = df["High"].rolling(9).max()
     rsv = ((df["Close"] - low9) / (high9 - low9) * 100).fillna(50)
@@ -140,11 +144,17 @@ def analyze(df):
         kd_cross = "up"
     elif y["K"] >= y["D"] and t["K"] < t["D"]:
         kd_cross = "down"
+    w20_cross = None
+    if y["Close"] <= y["MA20W"] and t["Close"] > t["MA20W"]:
+        w20_cross = "up"
+    elif y["Close"] >= y["MA20W"] and t["Close"] < t["MA20W"]:
+        w20_cross = "down"
     return {
         "date": df.index[-1],
         "close": t["Close"], "chg": t["Close"] - y["Close"], "chg_pct": (t["Close"] / y["Close"] - 1) * 100,
         "ma5": t["MA5"], "dist_pct": (t["Close"] / t["MA5"] - 1) * 100,
         "k": t["K"], "d": t["D"], "ma_cross": ma_cross, "kd_cross": kd_cross,
+        "ma20w": t["MA20W"], "w20_dist_pct": (t["Close"] / t["MA20W"] - 1) * 100, "w20_cross": w20_cross,
     }
 
 
@@ -173,6 +183,14 @@ def ma_pill(r):
         return "今天突破", "up"
     if r["ma_cross"] == "down":
         return "今天跌破", "down"
+    return "持續", "flat"
+
+
+def w20_pill(r):
+    if r["w20_cross"] == "up":
+        return "今天突破", "up"
+    if r["w20_cross"] == "down":
+        return "今天跌破", "crash"
     return "持續", "flat"
 
 
@@ -247,13 +265,43 @@ def build_alerts(items, vix=None):
             alerts.append(("up", "▲ 黃金交叉", ix, "KD 黃金交叉", "K 往上穿過 D，可能開始轉強"))
         elif r["kd_cross"] == "down":
             alerts.append(("down", "▼ 死亡交叉", ix, "KD 死亡交叉", "K 往下穿過 D，可能開始轉弱"))
+        if ix.get("w20"):
+            if r["w20_cross"] == "up":
+                alerts.append(("up", "▲ 突破 20週線", ix, "漲回 20週線上面", "中期轉強"))
+            elif r["w20_cross"] == "down":
+                alerts.append(("crash", "🚨 跌破 20週線", ix, f"跌破 20週線（{r['w20_dist_pct']:+.1f}%）", "中期趨勢轉弱，要特別小心"))
+            elif r["w20_dist_pct"] < 0:
+                alerts.append(("down", "▼ 20週線下", ix, f"還在 20週線下面（{r['w20_dist_pct']:+.1f}%）", "中期偏弱，站回線上才解除"))
+    alerts.sort(key=lambda a: a[0] != "crash")  # 跌破 20週線排最前面
     return alerts + vix_alerts(vix)
+
+
+def crash_items(items):
+    return [(ix, r) for ix, r in items if ix.get("w20") and r["w20_cross"] == "down"]
+
+
+def crash_banner_html(items):
+    return "".join(
+        f'<div class="crash-banner" role="alert"><span class="sirens">🚨 🚨 🚨</span><b>{ix["name"]} 跌破 20週線</b>'
+        f'收盤 <span class="num">{f2(r["close"])}</span>，20週線 <span class="num">{f2(r["ma20w"])}</span>（<span class="num">{r["w20_dist_pct"]:+.1f}%</span>）<br>'
+        f'中期趨勢轉弱，要特別小心</div>'
+        for ix, r in crash_items(items))
+
+
+def crash_banner_text(items):
+    lines = []
+    for ix, r in crash_items(items):
+        lines += ["🚨" * 10, f"‼️ {ix['name']} 跌破 20週線 ‼️",
+                  f"收盤 {f2(r['close'])}，20週線 {f2(r['ma20w'])}（{r['w20_dist_pct']:+.1f}%）",
+                  "中期趨勢轉弱，要特別小心", "🚨" * 10, ""]
+    return lines
 
 
 def headline(alerts):
     if not alerts:
         return "今天<b>沒有特別提醒</b>：沒有指數穿過 5日線，也沒有 KD 交叉。"
-    counts = [(sum(a[0] == c for a in alerts), label) for c, label in (("up", "轉強"), ("down", "轉弱"), ("warn", "風險"))]
+    groups = ((("up",), "轉強"), (("down", "crash"), "轉弱"), (("warn",), "風險"))
+    counts = [(sum(a[0] in cs for a in alerts), label) for cs, label in groups]
     parts = [f"{n} 個{label}" for n, label in counts if n]
     return f"今天有 <b>{len(alerts)} 個提醒</b>：{'、'.join(parts)}。"
 
@@ -263,15 +311,21 @@ def src_label(ix, r, stale):
     return label + ("（還沒更新）" if stale else "")
 
 
-def html_block(r):
+def html_block(r, w20=False):
     ct, cc = chg_text(r)
     mp, mc = ma_pill(r)
     kp, kc = kd_pill(r)
     side, dc = ("在線上", "up") if r["dist_pct"] >= 0 else ("在線下", "down")
     pos = 50 + max(-3, min(3, r["dist_pct"])) / 3 * 50
+    w20_row = ""
+    if w20:
+        wp, wc = w20_pill(r)
+        wside, wdc = ("在線上", "up") if r["w20_dist_pct"] >= 0 else ("在線下", "down")
+        w20_row = f"""
+          <div class="row"><dt>20週線</dt><dd><span class="num">{f2(r['ma20w'])}</span>　{wside} <span class="num {wdc}">{r['w20_dist_pct']:+.1f}%</span><span class="pill {wc}">{wp}</span></dd></div>"""
     return f"""<div class="price"><span class="close num">{f2(r['close'])}</span><span class="chg num {cc}">{ct}</span></div>
         <dl class="rows">
-          <div class="row"><dt>5日線</dt><dd><span class="num">{f2(r['ma5'])}</span>　{side} <span class="num {dc}">{r['dist_pct']:+.1f}%</span><span class="pill {mc}">{mp}</span></dd></div>
+          <div class="row"><dt>5日線</dt><dd><span class="num">{f2(r['ma5'])}</span>　{side} <span class="num {dc}">{r['dist_pct']:+.1f}%</span><span class="pill {mc}">{mp}</span></dd></div>{w20_row}
           <div class="row"><dt>KD</dt><dd>K <span class="num">{r['k']:.1f}</span> ／ D <span class="num">{r['d']:.1f}</span><span class="pill {kc}">{kp}</span></dd></div>
         </dl>
         <div><div class="meter"><span class="mid"></span><span class="dot {dc}" style="left:{pos:.1f}%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div>"""
@@ -283,7 +337,7 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
     alerts = build_alerts(items, vix)
 
     alert_html = "\n".join(
-        f'<li class="alert"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
+        f'<li class="alert{" crash" if c == "crash" else ""}"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
         for c, tag, ix, what, note in alerts) or '<li class="alert"><span class="tag">無</span><p>今天沒有指數穿過 5日線或 KD 交叉</p></li>'
 
     cards, groups = [], {}
@@ -294,9 +348,9 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
         stale = any(ix["key"] in stale_keys for ix, _ in members)
         top = f'<div class="card-top"><h3>{name}</h3><span class="src{" stale" if stale else ""}">{src_label(ix0, r0, stale)}</span></div>'
         if len(members) == 1:
-            body = html_block(r0)
+            body = html_block(r0, ix0.get("w20"))
         else:
-            body = "\n".join(f'<div class="sub"><h4>{ix["sub"]}<span class="code">{ix["code"]}</span></h4>{html_block(r)}</div>'
+            body = "\n".join(f'<div class="sub"><h4>{ix["sub"]}<span class="code">{ix["code"]}</span></h4>{html_block(r, ix.get("w20"))}</div>'
                              for ix, r in members)
         cards.append(f'<article class="card">{top}{body}</article>')
 
@@ -307,6 +361,7 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
     <p class="date">{today:%Y/%m/%d}（{WEEKDAYS[today.weekday()]}）<span class="edition">{edition_label}</span></p>
     <p class="headline">{headline(alerts)}</p>
   </header>
+  {crash_banner_html(items)}
   <section><h2>特別提醒</h2><ul class="alerts">{alert_html}</ul></section>
   <section><h2>指數狀態</h2><div class="cards">{''.join(cards)}</div></section>
   {risk_html(vix, fg) if edition == "morning" else ""}
@@ -326,8 +381,10 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
 def render_text(items, stale_keys, edition, today, vix, fg):
     alerts = build_alerts(items, vix)
     plain = re.sub(r"</?b>", "", headline(alerts))
-    lines = [f"關鍵指數小秘書｜{today.month}/{today.day}（{WEEKDAYS[today.weekday()]}）{'早報' if edition == 'morning' else '午報'}",
-             plain, "", "【特別提醒】"]
+    # 跌破 20週線的警報放在最上面，手機通知預覽一眼就看得到
+    lines = crash_banner_text(items) + [
+        f"關鍵指數小秘書｜{today.month}/{today.day}（{WEEKDAYS[today.weekday()]}）{'早報' if edition == 'morning' else '午報'}",
+        plain, "", "【特別提醒】"]
     lines += [f"{tag.split()[0]} {ix['short']}：{what}（{note.split('，')[-1]}）" for _, tag, ix, what, note in alerts] or ["無"]
     lines += ["", "【指數狀態】"]
     for ix, r in items:
@@ -338,6 +395,8 @@ def render_text(items, stale_keys, edition, today, vix, fg):
         stale = "（還沒更新）" if ix["key"] in stale_keys else ""
         lines.append(f"{ix['short']} {r['close']:,.2f} {ct.split('（')[0][0]}{abs(r['chg_pct']):.2f}%（{r['date'].month}/{r['date'].day}）{stale}")
         lines.append(f"　5日線 {side} {r['dist_pct']:+.1f}% {mp}｜KD {r['k']:.1f}/{r['d']:.1f} {kp}")
+        if ix.get("w20"):
+            lines.append(f"　20週線 {'線上' if r['w20_dist_pct'] >= 0 else '線下'} {r['w20_dist_pct']:+.1f}% {w20_pill(r)[0]}")
     if edition == "morning":
         lines += ["", "【風險溫度計】"]
         if vix:
@@ -352,7 +411,7 @@ def render_text(items, stale_keys, edition, today, vix, fg):
         else:
             lines.append("恐懼貪婪（仿 CNN）今天算不出來")
         lines.append(f"CNN 官方：{CNN_FG_URL}")
-    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險｜提醒不是投資建議"]
+    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險，🚨 = 跌破 20週線｜提醒不是投資建議"]
     return "\n".join(lines)
 
 
