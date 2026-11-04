@@ -66,6 +66,16 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); le
 .alert p { margin: 0; min-width: 0; }
 .alert small { display: block; color: var(--muted); font-size: 13px; }
 
+/* 加權跌破 20週線：放在標題下方的大警報，比其他提醒誇張 */
+.crash-banner { background: var(--down); color: var(--surface); border-radius: 12px; padding: 14px 16px; text-align: center; font-size: 14px;
+  outline: 3px dashed var(--down); outline-offset: 4px; animation: crash-pulse .8s ease-in-out infinite alternate; }
+.crash-banner .sirens { display: block; font-size: 26px; letter-spacing: .2em; }
+.crash-banner b { display: block; font-size: 24px; font-weight: 700; margin: 2px 0 6px; }
+@keyframes crash-pulse { to { transform: scale(1.02); box-shadow: 0 0 22px var(--down); } }
+@media (prefers-reduced-motion: reduce) { .crash-banner { animation: none; } }
+.alert.crash { border: 2px solid var(--down); background: var(--down-soft); }
+.tag.crash, .pill.crash { background: var(--down); color: var(--surface); }
+
 /* 指數卡 */
 .cards { display: grid; gap: 10px; }
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 10px; }
@@ -128,9 +138,11 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
   <header>
     <h1>關鍵指數小秘書</h1>
     <p class="date">2026/11/04（三）<span class="edition">早報</span></p>
-    <p class="headline">今天有 <b>1 個提醒</b>：1 個風險。</p>
+    <p class="headline">今天有 <b>2 個提醒</b>：1 個轉弱、1 個風險。</p>
   </header>
-  <section><h2>特別提醒</h2><ul class="alerts"><li class="alert"><span class="tag warn">⚠ 風險</span><p><b>VIX 恐慌指數</b> 收盤 20.83，在 20 以上<small>市場緊張，波動可能變大</small></p></li></ul></section>
+  
+  <section><h2>特別提醒</h2><ul class="alerts"><li class="alert"><span class="tag down">▼ 20週線下</span><p><b>加權指數</b> 還在 20週線下面（-5.4%）<small>中期偏弱，站回線上才解除</small></p></li>
+<li class="alert"><span class="tag warn">⚠ 風險</span><p><b>VIX 恐慌指數</b> 收盤 20.83，在 20 以上<small>市場緊張，波動可能變大</small></p></li></ul></section>
   <section><h2>指數狀態</h2><div class="cards"><article class="card"><div class="card-top"><h3>費城半導體指數</h3><span class="src">美股 11/3 收盤</span></div><div class="price"><span class="close num">10,600.40</span><span class="chg num up">▲ 272.07（+2.63%）</span></div>
         <dl class="rows">
           <div class="row"><dt>5日線</dt><dd><span class="num">10,963.95</span>　在線下 <span class="num down">-3.3%</span><span class="pill flat">持續</span></dd></div>
@@ -150,6 +162,7 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
         <div><div class="meter"><span class="mid"></span><span class="dot down" style="left:16.7%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div></div></article><article class="card"><div class="card-top"><h3>台灣加權指數</h3><span class="src">台股 11/3 收盤</span></div><div class="price"><span class="close num">43,307.54</span><span class="chg num down">▼ 1,612.60（-3.59%）</span></div>
         <dl class="rows">
           <div class="row"><dt>5日線</dt><dd><span class="num">45,368.68</span>　在線下 <span class="num down">-4.5%</span><span class="pill flat">持續</span></dd></div>
+          <div class="row"><dt>20週線</dt><dd><span class="num">45,757.40</span>　在線下 <span class="num down">-5.4%</span><span class="pill flat">持續</span></dd></div>
           <div class="row"><dt>KD</dt><dd>K <span class="num">14.2</span> ／ D <span class="num">18.5</span><span class="pill flat">K 在 D 下面</span></dd></div>
         </dl>
         <div><div class="meter"><span class="mid"></span><span class="dot down" style="left:0.0%"></span></div><div class="meter-labels"><span>線下 -3%</span><span>5日線</span><span>線上 +3%</span></div></div></article><article class="card"><div class="card-top"><h3>櫃買指數</h3><span class="src">台股 11/3 收盤</span></div><div class="price"><span class="close num">345.52</span><span class="chg num down">▼ 23.72（-6.42%）</span></div>
@@ -172,6 +185,8 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
       <dd>最近 5 天收盤價的平均。指數在線上面，代表最近買的人大多在賺；在線下面，代表大多在賠。</dd>
       <dt>突破／跌破</dt>
       <dd>昨天在線下、今天跑到線上 = 突破（轉強）。昨天在線上、今天掉到線下 = 跌破（轉弱）。</dd>
+      <dt>20週線是什麼？（只看加權指數）</dt>
+      <dd>最近 20 週、每週最後一天收盤價的平均，大約是 5 個月的成本，看的是中期趨勢。這週還沒結束時，先用今天收盤當這週的收盤。跌破那天會在最上面跳出大警報；之後只要還在線下，每天都會提醒，站回線上才停。</dd>
       <dt>KD 是什麼？</dt>
       <dd>看最近 9 天漲跌力道的指標，數字 0～100。K 跑得快，D 跑得慢。</dd>
       <dt>黃金交叉／死亡交叉</dt>
@@ -189,7 +204,7 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
   <footer>
     資料來源：美股 Yahoo Finance、台股 FinMind；恐懼貪婪指數為自行計算，非 CNN 官方<br>
     KD 參數：日線 KD(9,3,3)<br>
-    產生時間：2026/11/04 11:03（台灣時間）<br>
+    產生時間：2026/11/04 12:25（台灣時間）<br>
     這份是提醒，不是投資建議。
   </footer>
 </div></body></html>
