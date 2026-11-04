@@ -94,5 +94,9 @@ CNN 分級：0–24 極度恐慌、25–44 恐慌、45–55 中性、56–75 貪
 ## 6. 通知管道
 
 - 先做 Telegram bot（Telegram 機器人）：送文字版，最後附 HTML 報告的網址。
+- 收件對象放在 GitHub Secrets（GitHub 上的保密設定）：
+  - `TELEGRAM_CHAT_ID`：自己。
+  - `TELEGRAM_GROUP_CHAT_ID`：朋友的群組，ID 是負數。沒設定就只送自己。
+  - 兩個都會送。一個送失敗，另一個照送；Actions 那一步會變紅，並寫「第幾個送不出去」（1 = 自己，2 = 群組）。
 - HTML 放在 GitHub Pages（公開網頁）。
 - 之後考慮加 LINE。

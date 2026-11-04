@@ -79,8 +79,17 @@ jobs:
       - id: deploy
         uses: actions/deploy-pages@v5
 
+      # 第 1 個 = 自己（TELEGRAM_CHAT_ID），第 2 個 = 群組（TELEGRAM_GROUP_CHAT_ID，沒設定就只送自己）
+      # 一個失敗不影響另一個；有任何一個失敗，這一步最後變紅
       - name: 送 Telegram
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: curl -sSf --data-urlencode "text@out/message.txt" -d "chat_id=$CHAT_ID" "https://api.telegram.org/bot$TOKEN/sendMessage" > /dev/null
+          CHAT_IDS: ${{ secrets.TELEGRAM_CHAT_ID }} ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: |
+          n=0; failed=0
+          for id in $CHAT_IDS; do
+            n=$((n + 1))
+            curl -sSf --data-urlencode "text@out/message.txt" -d "chat_id=$id" "https://api.telegram.org/bot$TOKEN/sendMessage" > /dev/null \
+              || { echo "第 $n 個送不出去"; failed=1; }
+          done
+          exit $failed
