@@ -213,6 +213,64 @@ def vix_alerts(v):
     return []
 
 
+# SPEC 第 4 節「季節性賣壓」。(開始月, 日), 結束 (月, 日) 或 None, 標題, 說明。{when} 換成「今天」或「11/15（日）」。
+SEASONAL = [
+    ((9, 15), None, "基金報稅年度賣壓開始",
+     "共同基金和 ETF 的報稅年度在 10/31 結束。基金會在 9～10 月賣股票、調整年度配息，大約從 9/15 開始"
+     "（日期是大概，有些年份 9 月初就開始），這段時間容易有賣壓。"),
+    ((9, 30), None, "對沖基金 90 天贖回通知截止",
+     "{when}是對沖基金「90 天贖回通知」截止日。客戶想在年底拿回錢、而且合約要求提前 90 天通知的，最晚這天要通知。"
+     "這是年底「為了準備現金」的第一波賣壓。"),
+    ((10, 31), None, "基金報稅年度結束",
+     "共同基金和 ETF 的報稅年度在{when}結束。9～10 月的調整賣壓大致做完，11 月常常會反彈。"),
+    ((11, 15), None, "對沖基金 45 天贖回通知截止",
+     "{when}是對沖基金「45 天贖回通知」截止日。客戶想在年底拿回錢，最晚要在這天通知基金。"
+     "過了這天，基金就知道要準備多少現金，會為了籌錢賣股票。11/16～11/20 觀察外資賣超有沒有變少。"),
+    ((11, 16), (11, 20), "觀察外資賣超",
+     "對沖基金贖回通知已經在 11/15 截止，該賣的應該陸續賣完。今天看外資賣超有沒有變少："
+     "變少，代表賣壓是季節因素；沒變少，要小心。"),
+    ((11, 20), None, "散戶節稅賣壓開始",
+     "美國散戶會在年底前賣掉今年賠錢的股票，用虧損抵稅，大約從 11/20 開始（日期是大概）。"
+     "賣的是賠錢股；半導體今年如果大賺，對費半影響就比較小。"),
+    ((12, 15), None, "基金年底調整大致做完",
+     "基金經理的年底買賣，大多在 12/15 前後做完（日期是大概）。看賣壓有沒有停。"
+     "如果過了 11/15 和 12/15，外資還在大賣，就比較像基本面出問題，不是季節因素。"
+     "參考：2018 年費半在 12/24 見底，之後約 2 個月漲了 28%，但那年還有升息和貿易戰。"),
+    ((12, 31), None, "節稅賣壓結束、1 月賣壓要開始",
+     "{when}是今年最後一天，節稅賣賠錢股到這天結束。另外，有些人會把「賣賺錢股」延到明年 1 月，"
+     "因為獲利算到明年，稅就能晚一年繳。所以 1 月初可能再有一波賺錢股賣壓；費半如果今年大賺，要留意。"),
+    ((1, 15), None, "1 月賣賺錢股的賣壓大致結束",
+     "有些人把「賣賺錢股」延到 1 月，讓稅晚一年繳。這波賣壓大約在 1/15 前後結束（日期是大概）。"
+     "之後如果費半還在被賣，就不是節稅因素了。"),
+]
+
+
+def season_day(d):
+    """有早報的交易日：週二～週五，元旦除外。"""
+    return 1 <= d.weekday() <= 4 and (d.month, d.day) != (1, 1)
+
+
+def seasonal_alerts(today, edition):
+    """只放早報。日期碰到沒有早報的交易日，就提前到前一個有早報的交易日。"""
+    if edition != "morning" or not season_day(today):
+        return []
+    alerts = []
+    for start, end, title, text in SEASONAL:
+        day = date(today.year, *start)
+        if end:
+            hit = day <= today <= date(today.year, *end)
+        else:
+            fire = day
+            while not season_day(fire):
+                fire -= timedelta(days=1)
+            hit = fire == today
+        if hit:
+            when = "今天" if day == today else f"{day.month}/{day.day}（{WEEKDAYS[day.weekday()]}）"
+            ix = {"name": title, "short": title}
+            alerts.append(("season", "📅 季節", ix, "", text.format(when=when)))
+    return alerts
+
+
 def vix_status(v):
     if v["close"] >= 20:
         return "在 20 以上", "收盤在 20 以上，市場緊張，波動可能變大。"
@@ -254,7 +312,7 @@ def risk_html(v, f):
     return f'<section><h2>風險溫度計</h2><div class="risk">{vix_html(v)}{fg_html(f)}</div></section>'
 
 
-def build_alerts(items, vix=None):
+def build_alerts(items, vix=None, season=()):
     alerts = []
     for ix, r in items:
         if r["ma_cross"] == "up":
@@ -273,7 +331,7 @@ def build_alerts(items, vix=None):
             elif r["w20_dist_pct"] < 0:
                 alerts.append(("down", "▼ 20週線下", ix, f"還在 20週線下面（{r['w20_dist_pct']:+.1f}%）", "中期偏弱，站回線上才解除"))
     alerts.sort(key=lambda a: a[0] != "crash")  # 跌破 20週線排最前面
-    return alerts + vix_alerts(vix)
+    return alerts + vix_alerts(vix) + list(season)
 
 
 def crash_items(items):
@@ -300,7 +358,7 @@ def crash_banner_text(items):
 def headline(alerts):
     if not alerts:
         return "今天<b>沒有特別提醒</b>：沒有指數穿過 5日線，也沒有 KD 交叉。"
-    groups = ((("up",), "轉強"), (("down", "crash"), "轉弱"), (("warn",), "風險"))
+    groups = ((("up",), "轉強"), (("down", "crash"), "轉弱"), (("warn",), "風險"), (("season",), "季節"))
     counts = [(sum(a[0] in cs for a in alerts), label) for cs, label in groups]
     parts = [f"{n} 個{label}" for n, label in counts if n]
     return f"今天有 <b>{len(alerts)} 個提醒</b>：{'、'.join(parts)}。"
@@ -334,7 +392,7 @@ def html_block(r, w20=False):
 def render_html(items, stale_keys, edition, today, now, vix, fg):
     tpl = TEMPLATE.read_text(encoding="utf-8")
     head = tpl.split('<div class="wrap">')[0]
-    alerts = build_alerts(items, vix)
+    alerts = build_alerts(items, vix, seasonal_alerts(today, edition))
 
     alert_html = "\n".join(
         f'<li class="alert{" crash" if c == "crash" else ""}"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
@@ -379,13 +437,14 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
 
 
 def render_text(items, stale_keys, edition, today, vix, fg):
-    alerts = build_alerts(items, vix)
+    alerts = build_alerts(items, vix, seasonal_alerts(today, edition))
     plain = re.sub(r"</?b>", "", headline(alerts))
     # 跌破 20週線的警報放在最上面，手機通知預覽一眼就看得到
     lines = crash_banner_text(items) + [
         f"關鍵指數小秘書｜{today.month}/{today.day}（{WEEKDAYS[today.weekday()]}）{'早報' if edition == 'morning' else '午報'}",
         plain, "", "【特別提醒】"]
-    lines += [f"{tag.split()[0]} {ix['short']}：{what}（{note.split('，')[-1]}）" for _, tag, ix, what, note in alerts] or ["無"]
+    lines += [f"{tag.split()[0]} {ix['short']}：{note}" if c == "season" else
+              f"{tag.split()[0]} {ix['short']}：{what}（{note.split('，')[-1]}）" for c, tag, ix, what, note in alerts] or ["無"]
     lines += ["", "【指數狀態】"]
     for ix, r in items:
         ct, _ = chg_text(r)
@@ -411,7 +470,7 @@ def render_text(items, stale_keys, edition, today, vix, fg):
         else:
             lines.append("恐懼貪婪（仿 CNN）今天算不出來")
         lines.append(f"CNN 官方：{CNN_FG_URL}")
-    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險，🚨 = 跌破 20週線｜提醒不是投資建議"]
+    lines += ["", "紅/▲ = 轉強，綠/▼ = 轉弱，⚠ = 風險，📅 = 季節性賣壓，🚨 = 跌破 20週線｜提醒不是投資建議"]
     return "\n".join(lines)
 
 

@@ -58,6 +58,21 @@
 
 CNN 分級：0–24 極度恐慌、25–44 恐慌、45–55 中性、56–75 貪婪、76–100 極度貪婪。
 
+### 季節性賣壓提醒（年底機構賣壓）
+
+在早報「特別提醒」放一條 📅 季節提醒，說明這天為什麼可能有賣壓。每年照同樣規則自動出現。
+
+- **只放早報**，因為講的是美股和費半。
+- **只在交易日出**：週二～週五的早報，元旦除外。週六早報不放。
+- **日期碰到沒有早報的日子**（週末、週一、元旦），不管是開始、截止還是結束，都**提前到前一個有早報的交易日**。例：2026/11/15 是週日 → 11/13（五）早報提醒。
+- 「觀察外資賣超」是 11/16～11/20 每份早報都出。報告沒有外資資料，只提醒自己去看。
+- 寫「日期是大概」的，只是大約時間，不是固定規則。真的固定的只有 10/31（基金報稅年度結束）和 12/31。
+- 美股其他休市日（例如感恩節）沒有排除。
+
+日期和提醒文字只寫在 [report.py](../report.py) 的 `SEASONAL`，要改直接改那裡。
+
+資料來源（2026/11/05 整理）：[BNN Bloomberg](https://www.bnnbloomberg.ca/hedge-funds-face-reckoning-after-worst-month-since-2011-1.1165778)、[LuxAlgo](https://www.luxalgo.com/library/concept/tax-loss-selling-season/)、[Raymond James](https://www.raymondjames.ca/-/media/rj/dotcom-canada/files/commentary-and-insights/insights-and-strategies/insights-and-strategies_nov-2023_en.pdf)、[Bloomberg](https://www.bloomberg.com/news/articles/2019-02-24/a-210-billion-rally-in-chip-stocks-leaving-hedge-funds-in-dust)。
+
 ### 仿 CNN 恐懼貪婪指數怎麼算
 
 **為什麼要自己算**：CNN 和財經M平方都會擋程式抓資料，M平方的服務條款也禁止下載數據。所以不抓網頁，改用 Yahoo 的公開行情自己算。
