@@ -72,15 +72,9 @@ jobs:
           git commit -m "報告 $(TZ=Asia/Taipei date +%F_%H%M)" || echo "沒有新報告"
           git push
 
-      - uses: actions/configure-pages@v6
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: site
-      - id: deploy
-        uses: actions/deploy-pages@v5
-
       # 第 1 個 = 自己（TELEGRAM_CHAT_ID），第 2 個 = 群組（TELEGRAM_GROUP_CHAT_ID，沒設定就只送自己）
       # 一個失敗不影響另一個；有任何一個失敗，這一步最後變紅
+      # 放在發布網頁之前：2026/11/5 早報 GitHub Pages 卡住逾時，排在後面的 Telegram 整個沒送
       - name: 送 Telegram
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -93,3 +87,13 @@ jobs:
               || { echo "第 $n 個送不出去"; failed=1; }
           done
           exit $failed
+
+      - uses: actions/configure-pages@v6
+        if: ${{ !cancelled() }}
+      - uses: actions/upload-pages-artifact@v5
+        if: ${{ !cancelled() }}
+        with:
+          path: site
+      - id: deploy
+        if: ${{ !cancelled() }}
+        uses: actions/deploy-pages@v5
