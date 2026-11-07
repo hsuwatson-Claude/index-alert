@@ -72,9 +72,13 @@ h2 { margin: 0 0 8px; font-size: 13px; font-weight: 700; color: var(--muted); le
 .crash-banner .sirens { display: block; font-size: 26px; letter-spacing: .2em; }
 .crash-banner b { display: block; font-size: 24px; font-weight: 700; margin: 2px 0 6px; }
 @keyframes crash-pulse { to { transform: scale(1.02); box-shadow: 0 0 22px var(--down); } }
-@media (prefers-reduced-motion: reduce) { .crash-banner { animation: none; } }
+.crash-banner.warn { background: var(--warn); outline-color: var(--warn); animation-name: warn-pulse; }
+@keyframes warn-pulse { to { transform: scale(1.02); box-shadow: 0 0 22px var(--warn); } }
+@media (prefers-reduced-motion: reduce) { .crash-banner, .crash-banner.warn { animation: none; } }
 .alert.crash { border: 2px solid var(--down); background: var(--down-soft); }
 .tag.crash, .pill.crash { background: var(--down); color: var(--surface); }
+.alert.qcrash { border: 2px solid var(--warn); background: var(--warn-soft); }
+.tag.qcrash, .pill.qcrash { background: var(--warn); color: var(--surface); }
 
 /* 指數卡 */
 .cards { display: grid; gap: 10px; }
@@ -252,6 +256,8 @@ footer { color: var(--muted); font-size: 12px; line-height: 1.6; }
       <dd>昨天在線下、今天跑到線上 = 突破（轉強）。昨天在線上、今天掉到線下 = 跌破（轉弱）。</dd>
       <dt>20週線是什麼？（只看加權指數）</dt>
       <dd>最近 20 週、每週最後一天收盤價的平均，大約是 5 個月的成本，看的是中期趨勢。這週還沒結束時，先用今天收盤當這週的收盤。跌破那天會在最上面跳出大警報；之後只要還在線下，每天都會提醒，站回線上才停。</dd>
+      <dt>季線、年線是什麼？</dt>
+      <dd>季線大約是 3 個月的平均成本，年線大約是 1 年。台股用 60 日線、240 日線；美股照美國習慣用 50 日線、200 日線。收盤在線下就算跌破第 1 天，連 3 天站不回去才算「跌破成立」，成立那天會在最上面跳出大警報（年線紅色 🚨、季線橘色 🟠）。之後只要還在線下，每天都會提醒第幾天，站回線上就歸零。</dd>
       <dt>KD 是什麼？</dt>
       <dd>看最近 9 天漲跌力道的指標，數字 0～100。K 跑得快，D 跑得慢。</dd>
       <dt>黃金交叉／死亡交叉</dt>
