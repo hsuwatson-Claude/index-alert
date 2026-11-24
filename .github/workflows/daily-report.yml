@@ -46,9 +46,6 @@ jobs:
     needs: check
     if: needs.check.outputs.skip != 'true'
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
 
@@ -94,6 +91,17 @@ jobs:
         if: ${{ !cancelled() }}
         with:
           path: site
+
+  # 發布網頁獨立成一個 job：2026/11/24 早午報都失敗，錯誤是 No artifacts named "github-pages"。
+  # 同一個 job 裡上傳完馬上發布，GitHub 還查不到剛上傳的檔（已知問題 actions/deploy-pages#451）。
+  # 分開後要等上傳的 job 結束才發布；失敗時按「Re-run failed jobs」只會重跑這段，不會重送 Telegram。
+  deploy:
+    needs: report
+    if: ${{ !cancelled() && needs.report.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
       - id: deploy
-        if: ${{ !cancelled() }}
         uses: actions/deploy-pages@v5
