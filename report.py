@@ -30,8 +30,7 @@ WEEKDAYS = "一二三四五六日"
 # 排序即報告順序（SPEC 第 1 節）。group 相同的放同一張卡。
 INDICES = [
     {"key": "SOX", "name": "費城半導體指數", "short": "費半", "src": "yahoo", "symbol": "^SOX", "market": "US", "group": "費城半導體指數"},
-    {"key": "IXIC", "name": "那斯達克綜合", "short": "那指綜合", "src": "yahoo", "symbol": "^IXIC", "market": "US", "group": "那斯達克", "sub": "綜合指數", "code": "IXIC"},
-    {"key": "NDX", "name": "那斯達克 100", "short": "那指100", "src": "yahoo", "symbol": "^NDX", "market": "US", "group": "那斯達克", "sub": "100 指數", "code": "NDX"},
+    {"key": "NDX", "name": "那斯達克 100", "short": "那指100", "src": "yahoo", "symbol": "^NDX", "market": "US", "group": "那斯達克 100"},
     {"key": "TWII", "name": "加權指數", "short": "加權", "src": "finmind", "symbol": "TAIEX", "mis": "tse_t00.tw", "market": "TW", "group": "台灣加權指數", "w20": True},
     {"key": "TPEX", "name": "櫃買指數", "short": "櫃買", "src": "finmind", "symbol": "TPEx", "mis": "otc_o00.tw", "market": "TW", "group": "櫃買指數"},
 ]
@@ -116,6 +115,7 @@ def add_indicators(df):
     MA20W = 最近 20 週的週收盤平均；這週還沒結束時，用當天收盤當本週收盤。"""
     df = df.copy()
     df["MA5"] = df["Close"].rolling(5).mean()
+    df["MA20"] = df["Close"].rolling(20).mean()  # 月線
     week = pd.Series([pd.Period(d, "W") for d in df.index], index=df.index)
     prev19 = df["Close"].groupby(week).last().rolling(19).sum().shift(1)  # 前 19 個完整週的週收盤合計
     df["MA20W"] = (week.map(prev19) + df["Close"]) / 20
@@ -139,6 +139,11 @@ def analyze(df):
         ma_cross = "up"
     elif y["Close"] >= y["MA5"] and t["Close"] < t["MA5"]:
         ma_cross = "down"
+    m20_cross = None
+    if y["Close"] <= y["MA20"] and t["Close"] > t["MA20"]:
+        m20_cross = "up"
+    elif y["Close"] >= y["MA20"] and t["Close"] < t["MA20"]:
+        m20_cross = "down"
     kd_cross = None
     if y["K"] <= y["D"] and t["K"] > t["D"]:
         kd_cross = "up"
@@ -153,27 +158,35 @@ def analyze(df):
         "date": df.index[-1],
         "close": t["Close"], "chg": t["Close"] - y["Close"], "chg_pct": (t["Close"] / y["Close"] - 1) * 100,
         "ma5": t["MA5"], "dist_pct": (t["Close"] / t["MA5"] - 1) * 100,
+        "ma20": t["MA20"], "m20_dist_pct": (t["Close"] / t["MA20"] - 1) * 100, "m20_cross": m20_cross,
         "k": t["K"], "d": t["D"], "ma_cross": ma_cross, "kd_cross": kd_cross,
         "ma20w": t["MA20W"], "w20_dist_pct": (t["Close"] / t["MA20W"] - 1) * 100, "w20_cross": w20_cross,
     }
 
 
 # 季線、年線（SPEC 第 3 節）：台股 60/240 日，美股 50/200 日。連續 3 天收在線下 = 跌破成立。
+# 跌破成立後，連 2 天收在線上 = 站回。
 LONG_MA = {"TW": (("季線", 60), ("年線", 240)), "US": (("季線", 50), ("年線", 200))}
 BREAK_DAYS = 3
+BACK_DAYS = 2
 
 
 def long_lines(df, market):
     out = []
     for name, n in LONG_MA[market]:
         ma = df["Close"].rolling(n).mean()
+        below = (df["Close"] < ma).tolist()
         days = 0
-        for below in reversed((df["Close"] < ma).tolist()):
-            if not below:
+        for b in reversed(below):
+            if not b:
                 break
             days += 1
+        # 今天剛好是站回第 2 天，而且站回之前已經跌破成立（連 3 天以上在線下）
+        before = below[:-BACK_DAYS]
+        streak = next((i for i, b in enumerate(reversed(before)) if not b), len(before))
+        back = not any(below[-BACK_DAYS:]) and streak >= BREAK_DAYS
         out.append({"name": name, "n": n, "ma": ma.iloc[-1], "dist_pct": (df["Close"].iloc[-1] / ma.iloc[-1] - 1) * 100,
-                    "days": days, "cls": "crash" if name == "年線" else "qcrash"})
+                    "days": days, "back": back, "cls": "crash" if name == "年線" else "qcrash"})
     return out
 
 
@@ -201,6 +214,14 @@ def ma_pill(r):
     if r["ma_cross"] == "up":
         return "今天突破", "up"
     if r["ma_cross"] == "down":
+        return "今天跌破", "down"
+    return "持續", "flat"
+
+
+def m20_pill(r):
+    if r["m20_cross"] == "up":
+        return "今天突破", "up"
+    if r["m20_cross"] == "down":
         return "今天跌破", "down"
     return "持續", "flat"
 
@@ -338,6 +359,10 @@ def build_alerts(items, vix=None, season=()):
             alerts.append(("up", "▲ 突破", ix, "漲回 5日線上面", "短線轉強"))
         elif r["ma_cross"] == "down":
             alerts.append(("down", "▼ 跌破", ix, "跌到 5日線下面", "短線轉弱"))
+        if r["m20_cross"] == "up":
+            alerts.append(("up", "▲ 突破月線", ix, "漲回月線（20日線）上面", "短期轉強"))
+        elif r["m20_cross"] == "down":
+            alerts.append(("down", "▼ 跌破月線", ix, "跌到月線（20日線）下面", "短期轉弱"))
         if r["kd_cross"] == "up":
             alerts.append(("up", "▲ 黃金交叉", ix, "KD 黃金交叉", "K 往上穿過 D，可能開始轉強"))
         elif r["kd_cross"] == "down":
@@ -349,15 +374,14 @@ def build_alerts(items, vix=None, season=()):
                 alerts.append(("crash", "🚨 跌破 20週線", ix, f"跌破 20週線（{r['w20_dist_pct']:+.1f}%）", "中期趨勢轉弱，要特別小心"))
             elif r["w20_dist_pct"] < 0:
                 alerts.append(("down", "▼ 20週線下", ix, f"還在 20週線下面（{r['w20_dist_pct']:+.1f}%）", "中期偏弱，站回線上才解除"))
+        # 季線、年線只在「跌破成立當天」和「站回第 2 天」提醒；其他天看指數卡片
         for ln in r["lines"]:
-            d = ln["days"]
-            what = f"跌破{ln['name']}（{ln['n']}日線）第 {d} 天"
-            if d == BREAK_DAYS:
-                alerts.append((ln["cls"], f"{siren(ln['cls'])} 跌破{ln['name']}成立", ix, f"{what}（{ln['dist_pct']:+.1f}%）", "連 3 天站不回去，跌破成立"))
-            elif d > BREAK_DAYS:
-                alerts.append(("down", f"▼ {ln['name']}下", ix, f"{what}，已成立（{ln['dist_pct']:+.1f}%）", "站回線上才解除"))
-            elif d:
-                alerts.append(("down", f"▼ 跌破{ln['name']}", ix, f"{what}，還沒成立（{ln['dist_pct']:+.1f}%）", f"再 {BREAK_DAYS - d} 天站不回去就成立"))
+            if ln["days"] == BREAK_DAYS:
+                alerts.append((ln["cls"], f"{siren(ln['cls'])} 跌破{ln['name']}成立", ix,
+                               f"跌破{ln['name']}（{ln['n']}日線）第 {BREAK_DAYS} 天（{ln['dist_pct']:+.1f}%）", "連 3 天站不回去，跌破成立"))
+            elif ln["back"]:
+                alerts.append(("up", f"▲ 站回{ln['name']}", ix,
+                               f"站回{ln['name']}（{ln['n']}日線）上面第 {BACK_DAYS} 天（{ln['dist_pct']:+.1f}%）", "跌破成立後連 2 天站穩，轉強"))
     alerts.sort(key=lambda a: {"crash": 0, "qcrash": 1}.get(a[0], 2))  # 大警報排最前面
     return alerts + vix_alerts(vix) + list(season)
 
@@ -399,7 +423,7 @@ def crash_banner_text(items):
 
 def headline(alerts):
     if not alerts:
-        return "今天<b>沒有特別提醒</b>：沒有指數穿過 5日線，也沒有 KD 交叉。"
+        return "今天<b>沒有特別提醒</b>：沒有指數穿過 5日線或月線，也沒有 KD 交叉。"
     groups = ((("up",), "轉強"), (("down", "crash", "qcrash"), "轉弱"), (("warn",), "風險"), (("season",), "季節"))
     counts = [(sum(a[0] in cs for a in alerts), label) for cs, label in groups]
     parts = [f"{n} 個{label}" for n, label in counts if n]
@@ -425,11 +449,14 @@ def html_block(r, w20=False):
     kp, kc = kd_pill(r)
     side, dc = ("在線上", "up") if r["dist_pct"] >= 0 else ("在線下", "down")
     pos = 50 + max(-3, min(3, r["dist_pct"])) / 3 * 50
-    w20_row = ""
+    mp20, mc20 = m20_pill(r)
+    mside, mdc = ("在線上", "up") if r["m20_dist_pct"] >= 0 else ("在線下", "down")
+    w20_row = f"""
+          <div class="row"><dt>月線</dt><dd><span class="num">{f2(r['ma20'])}</span>　{mside} <span class="num {mdc}">{r['m20_dist_pct']:+.1f}%</span><span class="pill {mc20}">{mp20}</span></dd></div>"""
     if w20:
         wp, wc = w20_pill(r)
         wside, wdc = ("在線上", "up") if r["w20_dist_pct"] >= 0 else ("在線下", "down")
-        w20_row = f"""
+        w20_row += f"""
           <div class="row"><dt>20週線</dt><dd><span class="num">{f2(r['ma20w'])}</span>　{wside} <span class="num {wdc}">{r['w20_dist_pct']:+.1f}%</span><span class="pill {wc}">{wp}</span></dd></div>"""
     for ln in r["lines"]:
         lp, lc = line_pill(ln)
@@ -451,7 +478,7 @@ def render_html(items, stale_keys, edition, today, now, vix, fg):
 
     alert_html = "\n".join(
         f'<li class="alert{" " + c if c in ("crash", "qcrash") else ""}"><span class="tag {c}">{tag}</span><p><b>{ix["name"]}</b> {what}<small>{note}</small></p></li>'
-        for c, tag, ix, what, note in alerts) or '<li class="alert"><span class="tag">無</span><p>今天沒有指數穿過 5日線或 KD 交叉</p></li>'
+        for c, tag, ix, what, note in alerts) or '<li class="alert"><span class="tag">無</span><p>今天沒有指數穿過 5日線、月線或 KD 交叉</p></li>'
 
     cards, groups = [], {}
     for ix, r in items:
@@ -509,6 +536,7 @@ def render_text(items, stale_keys, edition, today, vix, fg):
         stale = "（還沒更新）" if ix["key"] in stale_keys else ""
         lines.append(f"{ix['short']} {r['close']:,.2f} {ct.split('（')[0][0]}{abs(r['chg_pct']):.2f}%（{r['date'].month}/{r['date'].day}）{stale}")
         lines.append(f"　5日線 {side} {r['dist_pct']:+.1f}% {mp}｜KD {r['k']:.1f}/{r['d']:.1f} {kp}")
+        lines.append(f"　月線 {'線上' if r['m20_dist_pct'] >= 0 else '線下'} {r['m20_dist_pct']:+.1f}% {m20_pill(r)[0]}")
         if ix.get("w20"):
             lines.append(f"　20週線 {'線上' if r['w20_dist_pct'] >= 0 else '線下'} {r['w20_dist_pct']:+.1f}% {w20_pill(r)[0]}")
         lines.append("　" + "｜".join(f"{ln['name']} {'線上' if ln['dist_pct'] >= 0 else '線下'} {ln['dist_pct']:+.1f}% {line_pill(ln)[0]}"
